@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from wordcloud import WordCloud
 
 # ----- Page configuration
 st.set_page_config(
@@ -19,13 +20,14 @@ def load_data():
 
 df = load_data()
 df["date"] = pd.to_datetime(df["date"])
+df["month"] = df["date"].dt.to_period("M").dt.to_timestamp()
 
 
 # ----- Sidebar navigation
 st.sidebar.title("Hiking Analysis")
 
 page = st.sidebar.radio(
-    "",
+    "Navigation",
     [
         "Welcome",
         "Hike Insights",
@@ -125,7 +127,7 @@ elif page == "Hike Insights":
             }
         )
 
-        fig_reviews.update_layout(height=600)
+        fig_reviews.update_layout(height=400)
 
         st.plotly_chart(fig_reviews, use_container_width=True)
 
@@ -166,7 +168,7 @@ elif page == "Hike Insights":
             }
         )
 
-        fig_timeline.update_layout(height=600)
+        fig_timeline.update_layout(height=400)
 
         st.plotly_chart(
             fig_timeline,
@@ -184,6 +186,125 @@ elif page == "Explore Hikes":
     reviews, and ratings in greater detail.
     """)
 
+    # ----- Hike selection
+    list_of_hikes = df['trail_name'].unique()
+    hike_selection = st.selectbox(
+        label = "Select hike:",
+        options = list_of_hikes
+    )
+
+    df_hike = df[df["trail_name"] == hike_selection]
+    df_monthly_counts = df_hike.groupby(["date", "rating"]).size().reset_index(name="count")
+    df_monthly_counts["month"] = pd.to_datetime(df_monthly_counts["date"]).dt.to_period("M").dt.to_timestamp()
+    df_monthly_counts = df_monthly_counts.groupby(["month", "rating"]).size().reset_index(name="count")
+
+    df_monthly_counts["weighted_rating"] = df_monthly_counts["rating"] * df_monthly_counts["count"]
+    df_monthly_summary = df_monthly_counts.groupby("month").agg(
+        review_count=("count", "sum"),
+        total_rating=("weighted_rating", "sum")
+    ).reset_index()
+
+    df_monthly_summary["avg_rating"] = df_monthly_summary["total_rating"] / df_monthly_summary["review_count"]
+
+    timeline_chart = px.scatter(
+        df_monthly_summary,
+        x="month",
+        y="review_count",
+        color="avg_rating",
+        color_continuous_scale="RdYlGn",
+        size="review_count"
+    )
+
+    year_starts = pd.date_range(
+        start=df_monthly_summary["month"].min(),
+        end=df_monthly_summary["month"].max(),
+        freq="YS" 
+    )
+
+    for date in year_starts:
+        timeline_chart.add_vline(
+            x=date,
+            line_dash="dash",
+            line_color="white",
+            opacity=0.6
+        )
+
+    timeline_chart.update_layout(height=400)
+
+    st.plotly_chart(
+        timeline_chart,
+        use_container_width=True
+    )
+
+    # ----- Create two columns
+    col1, col2 = st.columns(2)
+
+    #Word Cloud
+    with col1:
+    
+        filtered = df[(df['trail_name'] == hike_selection)]
+        text = ' '.join(filtered['review_text'].dropna())
+
+        wc = WordCloud(
+            #width=1000,
+            #height=500,
+            background_color="white"
+        ).generate(text)
+    
+        fig = px.imshow(wc.to_array())
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+        fig.update_layout(coloraxis_showscale=False)
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+    
+    
+    #Bear chart    
+    with col2:    
+        filtered = df[(df['trail_name'] == hike_selection)]
+
+        filtered['bear_flag'] = filtered['review_text'].str.contains('bear', case=False, na=False)
+        non_bear_bear_references = ['bear grass','beargrass','bearings','bearable', 'bear spray', 'no bear',
+                           "see any bears", "encounter any bears","thankfully, we didn't spot any"]
+        filtered['non_bear_bear_references'] = filtered['review_text'].str.contains('|'.join(non_bear_bear_references), case=False, na=False)
+        bear_reviews = filtered[(filtered['bear_flag']==True) & (filtered['non_bear_bear_references']==False)].reset_index()
+
+        monthly_bear = (
+            bear_reviews
+            .groupby("month")
+            .size()
+            .reset_index(name="count")
+        )
+
+        all_months = pd.date_range(
+            df_hike["month"].min(),
+            df_hike["month"].max(),
+            freq="MS"
+        )
+
+        monthly_bear = (
+            monthly_bear
+            .set_index("month")
+            .reindex(all_months, fill_value=0)
+            .rename_axis("month")
+            .reset_index()
+        )
+
+        fig = px.treemap(
+            monthly_bear,
+            path=[monthly_bear["month"].dt.strftime("%Y-%m")],
+            values="count",
+            color="count",
+            color_continuous_scale="Reds"
+        )
+
+        st.plotly_chart(
+            fig, 
+            use_container_width=True
+        )
 # ----- Predictive Model 
 elif page == "Predictive Model":
 
