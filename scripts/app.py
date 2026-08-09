@@ -9,6 +9,19 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown(
+    """
+    <style>
+    .block-container {
+        max-width: 100%;
+        padding-left: 3rem;
+        padding-right: 3rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # ----- Load data
 @st.cache_data
@@ -44,20 +57,72 @@ def load_data():
 
 df = load_data()
 
-# ----- Sidebar navigation
-st.sidebar.title("Hiking Analysis")
-
-page = st.sidebar.radio(
-    "Navigation",
-    [
-        "Welcome",
-        "Hike Insights",
-        "Explore Hikes",
-        "Predictive Model"
-    ])
-
 # ----- Main page title
 st.title("Hiking Analysis Dashboard")
+
+# ----- Top nav (styled radio buttons — behaves like tabs but keeps state across reruns)
+st.markdown(
+    """
+    <style>
+    /* Force the Streamlit radio container and all parent wrappers to full width */
+    .st-key-top_nav, 
+    .st-key-top_nav > div, 
+    .st-key-top_nav [data-testid="stRadio"], 
+    .st-key-top_nav [data-testid="stRadio"] > div {
+        width: 100% !important;
+    }
+
+    .st-key-top_nav div[role="radiogroup"] {
+        display: flex !important;
+        width: 100% !important;
+        gap: 0.5rem;
+        border-bottom: 2px solid #e6e6e6;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .st-key-top_nav div[role="radiogroup"] label {
+        flex: 1 1 0% !important;
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        background-color: #f0f2f6;
+        padding: 0.6rem 1rem;
+        border-radius: 6px 6px 0 0;
+        cursor: pointer;
+    }
+
+    .st-key-top_nav div[role="radiogroup"] label p {
+        color: #262730;
+        font-weight: 500;
+        text-align: center;
+    }
+
+    .st-key-top_nav div[role="radiogroup"] label:has(input:checked) {
+        background-color: #ff4b4b;
+    }
+
+    .st-key-top_nav div[role="radiogroup"] label:has(input:checked) p {
+        color: white;
+    }
+
+    /* hide the little circular radio indicator so it reads as a tab, not a radio button */
+    .st-key-top_nav div[role="radiogroup"] label > div:first-child {
+        display: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+with st.container(key="top_nav"):
+    page = st.radio(
+        label="Navigation",
+        options=["Welcome", "Hike Insights", "Explore Hikes", "Predictive Model"],
+        horizontal=True,
+        key="active_page",
+        label_visibility="collapsed"
+    )
 
 # ----- Welcome
 if page == "Welcome":
@@ -118,8 +183,9 @@ elif page == "Hike Insights":
     # ----- Timeline frequency selection
     timeline_frequency = st.radio(
         "Select timeline frequency:",
-        ["Daily", "Monthly"],
-        horizontal=True
+        ["Daily", "Weekly", "Monthly"],
+        horizontal=True,
+        key="timeline_frequency"
     )
 
     # ----- Create two columns
@@ -128,29 +194,52 @@ elif page == "Hike Insights":
     with col1:
         st.subheader("Number of Reviews by Hike")
 
-        reviews_by_hike = (
-            df
-            .groupby("trail_name")
-            .size()
-            .reset_index(name="review_count")
-            .sort_values("review_count", ascending=True)
-        )
+        if timeline_frequency == "Daily":
+            avg_hikes_per_trail = (
+                df
+                .groupby(["trail_name", "date"])
+                .size()
+                .groupby("trail_name")
+                .mean()
+                .reset_index(name="avg_hikes")
+                .sort_values("avg_hikes", ascending=True)
+            )
+        elif timeline_frequency == "Weekly":
+            avg_hikes_per_trail = (
+                df
+                .groupby(["trail_name", df["date"].dt.to_period("W")])
+                .size()
+                .groupby("trail_name")
+                .mean()
+                .reset_index(name="avg_hikes")
+                .sort_values("avg_hikes", ascending=True)
+            )
+        else:
+            avg_hikes_per_trail = (
+                df
+                .groupby(["trail_name", df["date"].dt.to_period("M")])
+                .size()
+                .groupby("trail_name")
+                .mean()
+                .reset_index(name="avg_hikes")
+                .sort_values("avg_hikes", ascending=True)
+            )
 
         fig_reviews = px.bar(
-            reviews_by_hike,
-            x="review_count",
+            avg_hikes_per_trail,
+            x="avg_hikes",
             y="trail_name",
             orientation="h",
-            title="Reviews by Hike",
+            title="Avg Reviews by Hike",
             labels={
-                "review_count": "Number of Reviews",
+                #"review_count": "Number of Reviews",
                 "trail_name": "Hike"
             }
         )
 
         fig_reviews.update_layout(height=400)
 
-        st.plotly_chart(fig_reviews, use_container_width=True)
+        st.plotly_chart(fig_reviews, use_container_width=True, key="reviews_by_hike_chart")
 
     with col2:
         st.subheader("Hiking Timeline")
@@ -165,6 +254,16 @@ elif page == "Hike Insights":
             )
 
             timeline_title = "Number of Hikes by Day"
+
+        elif timeline_frequency == "Weekly":
+            timeline_data = (
+                    df
+                    .set_index("date")
+                    .resample("W")
+                    .size()
+                    .reset_index(name="hike_count")
+                )
+            timeline_title = "Number of Hikes by Week"
 
         else:
 
@@ -193,7 +292,8 @@ elif page == "Hike Insights":
 
         st.plotly_chart(
             fig_timeline,
-            use_container_width=True
+            use_container_width=True,
+            key="hiking_timeline_chart"
         )
 
 
@@ -210,24 +310,12 @@ elif page == "Explore Hikes":
     # ----- Hike selection
     list_of_hikes = df['trail_name'].unique()
     hike_selection = st.selectbox(
-        label = "Select hike:",
-        options = list_of_hikes
+        label="Select hike:",
+        options=list_of_hikes,
+        key="hike_selection"
     )
+
     df_hike = df[df["trail_name"] == hike_selection]
-    metric1 = df_hike.shape[0]
-    metric2 = round(df_hike['rating'].mean(),2)
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric("Total Reviews", f"{metric1}")
-    with col2:
-        st.metric("Average Rating", f"{metric2}/5")
-    with col3:
-        st.metric("% Good Weather", f"")
-    with col4:
-        st.metric("Average Suffer Index", f"")
-
     df_monthly_counts = df_hike.groupby(["date", "rating"]).size().reset_index(name="count")
     df_monthly_counts["month"] = pd.to_datetime(df_monthly_counts["date"]).dt.to_period("M").dt.to_timestamp()
     df_monthly_counts = df_monthly_counts.groupby(["month", "rating"]).size().reset_index(name="count")
@@ -252,7 +340,7 @@ elif page == "Explore Hikes":
     year_starts = pd.date_range(
         start=df_monthly_summary["month"].min(),
         end=df_monthly_summary["month"].max(),
-        freq="YS" 
+        freq="YS"
     )
 
     for date in year_starts:
@@ -267,64 +355,77 @@ elif page == "Explore Hikes":
 
     st.plotly_chart(
         timeline_chart,
-        use_container_width=True
+        use_container_width=True,
+        key="hike_detail_timeline_chart"
     )
 
-    # ----- Word Cloud
-    
-    filtered = df[(df['trail_name'] == hike_selection)]
-    text = ' '.join(filtered['review_text'].dropna())
+    # ----- Create two columns
+    col1, col2 = st.columns(2)
 
-    wc = WordCloud(
-        #width=1000,
-        #height=500,
-        background_color="white"
-    ).generate(text)
-    
-    fig = px.imshow(wc.to_array())
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
-    fig.update_layout(coloraxis_showscale=False)
+    # Word Cloud
+    with col1:
 
-    st.plotly_chart(fig, use_container_width=True)
-    
-    
-    bear_filtered = df[(df['trail_name'] == hike_selection) ]
-    bear_filtered = bear_filtered[bear_filtered['actual_bear_sighting']==True]
+        filtered = df[(df['trail_name'] == hike_selection)]
+        text = ' '.join(filtered['review_text'].dropna())
 
-    monthly_bear = (
-        bear_filtered
-        .groupby("month")
-        .size()
-        .reset_index(name="count")
-    )
+        wc = WordCloud(
+            # width=1000,
+            # height=500,
+            background_color="white"
+        ).generate(text)
 
-    all_months = pd.date_range(
-        df_hike["month"].min(),
-        df_hike["month"].max(),
-        freq="MS"
-    )
+        fig = px.imshow(wc.to_array())
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(visible=False)
+        fig.update_layout(coloraxis_showscale=False)
 
-    monthly_bear = (
-        monthly_bear
-        .set_index("month")
-        .reindex(all_months, fill_value=0)
-        .rename_axis("month")
-        .reset_index()
-    )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="wordcloud_chart"
+        )
 
-    fig = px.bar(
-        monthly_bear,
-        x="month",
-        y="count",
-        color="count",
-        color_continuous_scale="Reds",
-        title="Bear Sightings by Month"
-    )
+    # Bear chart
+    with col2:
+        filtered = df[(df['trail_name'] == hike_selection)]
+        filtered = filtered[filtered['actual_bear_sighting'] == True]
 
-    st.plotly_chart(fig, use_container_width=True)
+        monthly_bear = (
+            filtered
+            .groupby("month")
+            .size()
+            .reset_index(name="count")
+        )
 
-# ----- Predictive Model 
+        all_months = pd.date_range(
+            df_hike["month"].min(),
+            df_hike["month"].max(),
+            freq="MS"
+        )
+
+        monthly_bear = (
+            monthly_bear
+            .set_index("month")
+            .reindex(all_months, fill_value=0)
+            .rename_axis("month")
+            .reset_index()
+        )
+
+        fig = px.treemap(
+            monthly_bear,
+            path=[monthly_bear["month"].dt.strftime("%Y-%m")],
+            values="count",
+            color="count",
+            color_continuous_scale="Reds"
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key="bear_sighting_chart"
+        )
+
+# ----- Predictive Model
 elif page == "Predictive Model":
 
     st.header("Predictive Model")
