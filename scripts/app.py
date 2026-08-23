@@ -27,13 +27,12 @@ st.markdown(
 @st.cache_data
 def load_data():
 
-    url = "https://raw.githubusercontent.com/statzenthusiast921/hike_monitoring/refs/heads/main/data/synthetic_hiking_reviews.csv"
-    df = pd.read_csv(url)
+    url1 = "https://raw.githubusercontent.com/statzenthusiast921/hike_monitoring/refs/heads/main/data/synthetic_hiking_reviews.csv"
+    df = pd.read_csv(url1)
 
     df["date"] = pd.to_datetime(df["date"])
     df["month"] = df["date"].dt.to_period("M").dt.to_timestamp()
     df["year"] = df["date"].dt.year
-
 
     exclusions = [
         "bear grass",
@@ -53,9 +52,18 @@ def load_data():
 
     df = df.sort_values("date").reset_index(drop=True)
 
-    return df
+    url2 = "https://raw.githubusercontent.com/statzenthusiast921/hike_monitoring/refs/heads/main/data/final_model_results.csv"
+    model_data = pd.read_csv(url2)
+    model_data = model_data[['trail_name','year_month','avg_monthly_rating','key']]
 
-df = load_data()
+    url3 = "https://raw.githubusercontent.com/statzenthusiast921/hike_monitoring/refs/heads/main/data/trail_model_estimates.csv"
+    model_estimates = pd.read_csv(url3)
+    model_estimates = model_estimates[~(model_estimates['term'] == "(Intercept)")]
+    model_estimates = model_estimates[['trail_name','term','estimate','p.value']]
+
+    return df, model_data, model_estimates
+
+df, model_data, model_estimates = load_data()
 
 # ----- Main page title
 st.title("Hiking Analysis Dashboard")
@@ -182,7 +190,7 @@ elif page == "Hike Insights":
     """)
     # ----- Timeline frequency selection
     timeline_frequency = st.radio(
-        "Select timeline frequency:",
+        "Select Timeline Frequency:",
         ["Daily", "Weekly", "Monthly"],
         horizontal=True,
         key="timeline_frequency"
@@ -310,7 +318,7 @@ elif page == "Explore Hikes":
     # ----- Hike selection
     list_of_hikes = df['trail_name'].unique()
     hike_selection = st.selectbox(
-        label="Select hike:",
+        label="Select Hike:",
         options=list_of_hikes,
         key="hike_selection"
     )
@@ -334,7 +342,11 @@ elif page == "Explore Hikes":
         y="review_count",
         color="avg_rating",
         color_continuous_scale="RdYlGn",
-        size="review_count"
+        size="review_count",
+        labels={
+            "review_count": "# Hikes",
+            "month": "Year-Month"
+        }
     )
 
     year_starts = pd.date_range(
@@ -351,7 +363,18 @@ elif page == "Explore Hikes":
             opacity=0.6
         )
 
-    timeline_chart.update_layout(height=400)
+    timeline_chart.update_layout(
+        height=400,
+        coloraxis_colorbar=dict(
+                title="Avg Monthly Rating",
+                orientation="h",
+                yanchor="top",
+                y=-0.25,
+                xanchor="center",
+                x=0.5,
+                len=0.8
+        )
+    )
 
     st.plotly_chart(
         timeline_chart,
@@ -362,7 +385,7 @@ elif page == "Explore Hikes":
     # ----- Create two columns
     col1, col2 = st.columns(2)
 
-    # Word Cloud
+    # ----- Word Cloud
     with col1:
 
         filtered = df[(df['trail_name'] == hike_selection)]
@@ -374,7 +397,10 @@ elif page == "Explore Hikes":
             background_color="white"
         ).generate(text)
 
-        fig = px.imshow(wc.to_array())
+        fig = px.imshow(
+            wc.to_array(),
+            title = 'Word Cloud for Hikes'
+        )
         fig.update_xaxes(visible=False)
         fig.update_yaxes(visible=False)
         fig.update_layout(coloraxis_showscale=False)
@@ -385,7 +411,7 @@ elif page == "Explore Hikes":
             key="wordcloud_chart"
         )
 
-    # Bear chart
+    # ----- Bear chart
     with col2:
         filtered = df[(df['trail_name'] == hike_selection)]
         filtered = filtered[filtered['actual_bear_sighting'] == True]
@@ -416,8 +442,10 @@ elif page == "Explore Hikes":
             path=[monthly_bear["month"].dt.strftime("%Y-%m")],
             values="count",
             color="count",
-            color_continuous_scale="Reds"
+            color_continuous_scale="Reds",
+            title = 'Bear Sighting Frequency'
         )
+        fig.update_layout(coloraxis_colorbar_title="")
 
         st.plotly_chart(
             fig,
@@ -435,3 +463,117 @@ elif page == "Predictive Model":
     to estimate hiking ratings based on trail characteristics and
     environmental conditions.
     """)
+
+    # ----- Hike selection
+    list_of_hikes = df['trail_name'].unique()
+    hike_selection = st.selectbox(
+        label="Select Hike:",
+        options=list_of_hikes,
+        key="hike_selection"
+    )
+
+    # ----- Create two columns
+    col1, col2 = st.columns(2)
+
+    # ----- Forecast Chart
+    with col1:
+        filtered = model_data[(model_data['trail_name'] == hike_selection)]
+
+        forecast_chart = px.line(
+            filtered,
+            x="year_month",
+            y="avg_monthly_rating",
+            color = 'key',
+            color_discrete_map={
+                "ACTUAL": "#1f77b4",
+                "PRED": "#ff7f0e",
+            },
+            color_discrete_sequence=["#1f77b4", "#ff7f0e"],
+            labels={
+                "year_month": "Year-Month",
+                "avg_monthly_rating": "Avg Monthly Rating"
+            },
+            title = 'Average Rating Forecast'
+        )
+
+
+        year_starts = pd.date_range(
+            start=pd.to_datetime(filtered["year_month"].min()) + pd.DateOffset(years=1),            
+            end=filtered["year_month"].max(),
+            freq="YS"
+        )
+
+        for year_month in year_starts:
+            forecast_chart.add_vline(
+                x=year_month,
+                line_dash="dash",
+                line_color="white",
+                opacity=0.6
+            )
+        forecast_chart.update_layout(
+                height=400,
+                legend_title_text='',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.2,
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
+        forecast_chart.update_yaxes(range=[1, 5])
+
+        st.plotly_chart(
+            forecast_chart,
+            use_container_width=True
+        )
+
+    with col2:
+        filtered = model_estimates[(model_estimates['trail_name'] == hike_selection)]
+        filtered = filtered.sort_values(by = 'p.value', ascending = False)
+
+        model_estimates_chart = px.bar(
+            filtered,
+            x='p.value',
+            y='term',
+            orientation='h',
+            color_discrete_sequence=['#800080'],
+            labels={
+                "term": "Estimate Name",
+                "p.value": "P-value"
+            },
+            title = 'Model Estimates'
+        )
+
+        model_estimates_chart.add_vline(
+            x=0.05,
+            line_dash="dash",
+            line_color="#FFFFFF"
+        )
+
+        model_estimates_chart.add_scatter(
+            x=[None],
+            y=[None],
+            mode='lines',
+            line=dict(color='#FFFFFF', dash='dash'),
+            name='Statistical Significance Threshold'
+        )
+
+        model_estimates_chart.update_layout(
+            height=450,
+            legend_title_text='',
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.2,
+                xanchor="center",
+                x=0.5
+            )
+        )
+
+        model_estimates_chart.update_xaxes(range=[0, 1])
+
+        st.plotly_chart(
+            model_estimates_chart,
+            use_container_width=True
+        )
