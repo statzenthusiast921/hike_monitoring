@@ -560,7 +560,7 @@ elif page == "Predictive Model":
         )
 
         model_estimates_chart.update_layout(
-            height=450,
+            height=400,
             legend_title_text='',
             legend=dict(
                 orientation="h",
