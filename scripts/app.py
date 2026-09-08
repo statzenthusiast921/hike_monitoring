@@ -294,7 +294,7 @@ elif page == "Hike Insights":
             title=timeline_title,
             labels={
                 "date": "Date",
-                "hike_count": "Number of Hikes"
+                "hike_count": "# of Hikes"
             }
         )
 
