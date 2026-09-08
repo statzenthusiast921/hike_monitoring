@@ -263,7 +263,7 @@ elif page == "Hike Insights":
                 .reset_index(name="hike_count")
             )
 
-            timeline_title = "Number of Hikes by Day"
+            timeline_title = "Number of Reviews by Day"
 
         elif timeline_frequency == "Weekly":
             timeline_data = (
@@ -294,7 +294,7 @@ elif page == "Hike Insights":
             title=timeline_title,
             labels={
                 "date": "Date",
-                "hike_count": "# of Hikes"
+                "hike_count": "# of Reviews"
             }
         )
 
