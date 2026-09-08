@@ -140,11 +140,8 @@ if page == "Welcome":
     st.write("""
     This dashboard explores patterns in hiking experiences using a 
     synthetic dataset of hiking reviews collected across a variety 
-    of trails and conditions centered around the Portland metro area.
-    """)
-
-    st.write("""
-    The dashboard examines how factors such as trail difficulty,
+    of trails and conditions centered around the Portland metro area. 
+    It also examines how factors such as trail difficulty,
     elevation gain, weather conditions, wildlife sightings, and other
     characteristics relate to ratings and experiences.
     """)
@@ -176,7 +173,7 @@ if page == "Welcome":
     to simulate realistic variation in characteristics such as trail
     difficulty, weather conditions, wildlife sightings, and hiking
     experiences, while Ollama was used to generate natural-language
-    review text consistent with those characteristics.
+    review text that aligned to the random variation in trail characteristics.
     """)
 
 # ----- Hike Insights
@@ -212,6 +209,8 @@ elif page == "Hike Insights":
                 .reset_index(name="avg_hikes")
                 .sort_values("avg_hikes", ascending=True)
             )
+            avg_hikes_per_trail['avg_hikes'] = avg_hikes_per_trail['avg_hikes'].round(4)
+
         elif timeline_frequency == "Weekly":
             avg_hikes_per_trail = (
                 df
@@ -222,6 +221,8 @@ elif page == "Hike Insights":
                 .reset_index(name="avg_hikes")
                 .sort_values("avg_hikes", ascending=True)
             )
+            avg_hikes_per_trail['avg_hikes'] = avg_hikes_per_trail['avg_hikes'].round(4)
+
         else:
             avg_hikes_per_trail = (
                 df
@@ -232,6 +233,7 @@ elif page == "Hike Insights":
                 .reset_index(name="avg_hikes")
                 .sort_values("avg_hikes", ascending=True)
             )
+            avg_hikes_per_trail['avg_hikes'] = avg_hikes_per_trail['avg_hikes'].round(4)
 
         fig_reviews = px.bar(
             avg_hikes_per_trail,
@@ -240,8 +242,8 @@ elif page == "Hike Insights":
             orientation="h",
             title="Avg Reviews by Hike",
             labels={
-                #"review_count": "Number of Reviews",
-                "trail_name": "Hike"
+                "avg_hikes": "Avg # of Hikes",
+                "trail_name": "Hike Name"
             }
         )
 
@@ -334,7 +336,7 @@ elif page == "Explore Hikes":
         total_rating=("weighted_rating", "sum")
     ).reset_index()
 
-    df_monthly_summary["avg_rating"] = df_monthly_summary["total_rating"] / df_monthly_summary["review_count"]
+    df_monthly_summary["avg_rating"] = (df_monthly_summary["total_rating"] / df_monthly_summary["review_count"]).round(4)
 
     timeline_chart = px.scatter(
         df_monthly_summary,
@@ -345,7 +347,8 @@ elif page == "Explore Hikes":
         size="review_count",
         labels={
             "review_count": "# Hikes",
-            "month": "Year-Month"
+            "month": "Year-Month",
+            "avg_rating": "Avg Rating"
         }
     )
 
@@ -436,15 +439,19 @@ elif page == "Explore Hikes":
             .rename_axis("month")
             .reset_index()
         )
-
         fig = px.treemap(
             monthly_bear,
             path=[monthly_bear["month"].dt.strftime("%Y-%m")],
             values="count",
             color="count",
             color_continuous_scale="Reds",
-            title = 'Bear Sighting Frequency'
+            title='Bear Sighting Frequency',
         )
+
+        fig.update_traces(
+            hovertemplate="<b>%{label}</b><br>Bear Sightings: %{value}<extra></extra>"
+        )
+
         fig.update_layout(coloraxis_colorbar_title="")
 
         st.plotly_chart(
@@ -462,6 +469,12 @@ elif page == "Predictive Model":
     This section presents the results of a predictive model designed
     to estimate hiking ratings based on trail characteristics and
     environmental conditions.
+
+    The chart on the left shows the forecasted average rating per month for each trail.
+    The chart on the right shows the p-values for the parameter estimates in the model
+    compared against a 0.05 p-value threshold indiciating statistical significance.  Any 
+    bars that fall short of the dashed white line indicate the particular parameter is 
+    statistically significant.
     """)
 
     # ----- Hike selection
@@ -478,7 +491,7 @@ elif page == "Predictive Model":
     # ----- Forecast Chart
     with col1:
         filtered = model_data[(model_data['trail_name'] == hike_selection)]
-
+        filtered['avg_monthly_rating'] = filtered['avg_monthly_rating'].round(4)
         forecast_chart = px.line(
             filtered,
             x="year_month",
@@ -491,7 +504,8 @@ elif page == "Predictive Model":
             color_discrete_sequence=["#1f77b4", "#ff7f0e"],
             labels={
                 "year_month": "Year-Month",
-                "avg_monthly_rating": "Avg Monthly Rating"
+                "avg_monthly_rating": "Avg Monthly Rating",
+                "key": "Key"
             },
             title = 'Average Rating Forecast'
         )
@@ -531,6 +545,7 @@ elif page == "Predictive Model":
     with col2:
         filtered = model_estimates[(model_estimates['trail_name'] == hike_selection)]
         filtered = filtered.sort_values(by = 'p.value', ascending = False)
+        filtered['p.value'] = filtered['p.value'].round(4)
 
         model_estimates_chart = px.bar(
             filtered,
