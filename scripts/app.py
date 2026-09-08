@@ -273,7 +273,7 @@ elif page == "Hike Insights":
                     .size()
                     .reset_index(name="hike_count")
                 )
-            timeline_title = "Number of Hikes by Week"
+            timeline_title = "Number of Reviews by Week"
 
         else:
 
@@ -285,7 +285,7 @@ elif page == "Hike Insights":
                 .reset_index(name="hike_count")
             )
 
-            timeline_title = "Number of Hikes by Month"
+            timeline_title = "Number of Reviews by Month"
 
         fig_timeline = px.line(
             timeline_data,
